@@ -678,6 +678,8 @@ function startAdminServer(dataProvider) {
 
   const adminPort = CONFIG.adminPort || 3007;
   server = app.listen(adminPort, "0.0.0.0", () => {
+    // 应用重启后按持久化配置恢复抓包服务，无需再次保存配置。
+    ensureEmbeddedCaptureService();
     adminLogger.info("admin panel started", {
       url: `http://localhost:${  adminPort}`,
       port: adminPort,
