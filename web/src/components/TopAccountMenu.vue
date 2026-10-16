@@ -159,7 +159,7 @@ async function loadCareer() {
 function openCareer() {
   if (!currentAccount.value)
     return
-  closeDropdown()
+  showAccountDropdown.value = false
   showCareerModal.value = true
   loadCareer()
 }
@@ -244,48 +244,59 @@ async function handleAccountSaved() {
 
 <template>
   <div class="relative">
-    <button
-      ref="trigger"
-      type="button"
-      :aria-expanded="showAccountDropdown"
-      :aria-controls="dropdownId"
-      aria-label="选择和管理账号"
-      @keydown.escape="closeDropdown"
-      class="max-w-[min(76vw,280px)] flex items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-gray-100/70 dark:hover:bg-gray-700/50"
-      @click="toggleDropdown"
-    >
-      <div class="h-9 w-9 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200 transition dark:bg-gray-700 hover:ring-2 dark:ring-gray-600 hover:ring-[var(--theme-primary)]">
-        <img
-          v-if="shouldShowAvatar(currentAccount)"
-          :src="currentAvatarSrc"
-          :alt="displayName"
-          class="h-full w-full object-cover"
-          @error="markAvatarFailed(currentAccount)"
-        >
-        <span v-else class="text-sm text-gray-500 font-semibold dark:text-gray-300">
-          {{ avatarInitial(currentAccount) }}
-        </span>
-      </div>
-      <div class="min-w-0 flex flex-col">
-        <span class="truncate text-sm text-gray-900 font-semibold dark:text-gray-100">
-          {{ displayName }}
-        </span>
-        <span class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-300">
-          <span
-            v-if="platform"
-            class="rounded px-1 py-0.2 text-xs font-medium leading-tight"
-            :class="getPlatformClass(currentAccount?.platform)"
+    <div class="max-w-[min(76vw,280px)] flex items-center gap-1">
+      <button
+        type="button"
+        aria-label="查看角色生涯"
+        title="查看角色生涯"
+        :disabled="!currentAccount"
+        class="h-11 w-11 flex shrink-0 items-center justify-center rounded-full disabled:cursor-default"
+        @click="openCareer"
+      >
+        <span class="h-9 w-9 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200 transition dark:bg-gray-700 hover:ring-2 dark:ring-gray-600 hover:ring-[var(--theme-primary)]">
+          <img
+            v-if="shouldShowAvatar(currentAccount)"
+            :src="currentAvatarSrc"
+            :alt="displayName"
+            class="h-full w-full object-cover"
+            @error="markAvatarFailed(currentAccount)"
           >
-            {{ platform }}
+          <span v-else class="text-sm text-gray-500 font-semibold dark:text-gray-300">
+            {{ avatarInitial(currentAccount) }}
           </span>
-          <span v-if="currentSubtitle" class="truncate">{{ currentSubtitle }}</span>
         </span>
-      </div>
-      <div
-        class="i-carbon-chevron-down shrink-0 text-gray-400 transition-transform duration-200"
-        :class="{ 'rotate-180': showAccountDropdown }"
-      />
-    </button>
+      </button>
+      <button
+        ref="trigger"
+        type="button"
+        :aria-expanded="showAccountDropdown"
+        :aria-controls="dropdownId"
+        aria-label="选择和管理账号"
+        @keydown.escape="closeDropdown"
+        class="min-w-0 flex flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-gray-100/70 dark:hover:bg-gray-700/50"
+        @click="toggleDropdown"
+      >
+        <div class="min-w-0 flex flex-col">
+          <span class="truncate text-sm text-gray-900 font-semibold dark:text-gray-100">
+            {{ displayName }}
+          </span>
+          <span class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-300">
+            <span
+              v-if="platform"
+              class="rounded px-1 py-0.2 text-xs font-medium leading-tight"
+              :class="getPlatformClass(currentAccount?.platform)"
+            >
+              {{ platform }}
+            </span>
+            <span v-if="currentSubtitle" class="truncate">{{ currentSubtitle }}</span>
+          </span>
+        </div>
+        <div
+          class="i-carbon-chevron-down shrink-0 text-gray-400 transition-transform duration-200"
+          :class="{ 'rotate-180': showAccountDropdown }"
+        />
+      </button>
+    </div>
 
     <Teleport to="body">
       <div
@@ -358,10 +369,6 @@ async function handleAccountSaved() {
             暂无账号
           </div>
         </div>
-        <button v-if="currentAccount" type="button" class="min-h-11 w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700" @click="openCareer">
-          <span class="i-carbon-user-profile" aria-hidden="true" />
-          查看角色生涯
-        </button>
         <div class="mt-1 border-t border-gray-100 pt-1 dark:border-gray-700">
           <button
             class="w-full flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-gray-100/50 dark:hover:bg-gray-700/50"

@@ -34,7 +34,7 @@ test('business and settlement boundaries fail closed', () => {
   assert.equal(phase(WINDOW.endTime), 'settling');
   assert.equal(phase(WINDOW.endTime + 1), 'ended');
 });
-function setup({ now = WINDOW.startTime + 100, diamond = false, unlocked = true, salesLog, panels = false, fundUnlocked = false, fundState = 1, inventory = [{ id: 1001, count: 1000000 }], account = {}, hireList, hireSuccess = true } = {}) {
+function setup({ now = WINDOW.startTime + 100, diamond = false, unlocked = true, salesLog, panels = false, fundUnlocked = false, fundState = 1, inventory = [{ id: 1001, count: 1000000 }], account = {}, hireList, hireSuccess = true, workPage } = {}) {
   const calls = [];
   const logs = [];
   const group = { group: { head: { id: '2026110100' }, children: [{ head: { id: '2026110101', start_time: WINDOW.startTime, end_time: WINDOW.endTime, settle_start_time: WINDOW.settleTime }, milk_tea: { summary: { shop_open_at: WINDOW.startTime, level: 1 } } }, { head: { id: '2026110102' }, shop: { goods: [{ id: 301, name: '森野甜莓种子', item: [{ id: 20525, count: 1 }], cost: [{ id: diamond ? 1004 : 1001, count: 10000 }], purchase_limit: 108, purchased_count: 0, category_tag: 'seed', cond_hints: [{ satisfied: unlocked, target: 3 }] }] } }] } };
@@ -45,7 +45,7 @@ function setup({ now = WINDOW.startTime + 100, diamond = false, unlocked = true,
   const service = createMilkTeaService({ log: (...args) => logs.push(args), types, getServerTimeSec: () => now, getUserState: () => account, log: (...args) => logs.push(args), getBag: async () => inventory, getBagItems: x => x, itemDto: x => ({ ...x, name: '夹具物品' }), sendMsgAsync: async (_, method, bytes) => {
     if (method === 'GetGroup') return { body: types.MilkTeaGetGroupReply.encode(types.MilkTeaGetGroupReply.fromObject(group)).finish() };
     const req = types.MilkTeaOperateRequest.toObject(types.MilkTeaOperateRequest.decode(bytes), { longs: String });calls.push(req);
-    const fixture = Number(req.cmd) === 56 && hireList ? { id: req.id, cmd: req.cmd, milk_tea_get_hire_list: hireList } : Number(req.cmd) === 57 ? { id: req.id, cmd: req.cmd, milk_tea_hire: { results: [{ success: hireSuccess }] } } : Number(req.cmd) === 55 ? fixtures[282] : Number(req.cmd) === 58 ? fixtures[283] : Number(req.cmd) === 63 ? fixtures[206] : Number(req.cmd) === 67 && salesLog ? { id: req.id, cmd: req.cmd, milk_tea_get_sales_log: salesLog } : { id: req.id, cmd: req.cmd };
+    const fixture = Number(req.cmd) === 56 && hireList ? { id: req.id, cmd: req.cmd, milk_tea_get_hire_list: hireList } : Number(req.cmd) === 65 ? { id: req.id, cmd: req.cmd, milk_tea_interact: {} } : Number(req.cmd) === 57 ? { id: req.id, cmd: req.cmd, milk_tea_hire: { results: [{ success: hireSuccess }] } } : Number(req.cmd) === 55 ? fixtures[282] : Number(req.cmd) === 58 ? fixtures[283] : Number(req.cmd) === 63 ? (workPage ? { id: req.id, cmd: req.cmd, milk_tea_get_work_page: workPage } : fixtures[206]) : Number(req.cmd) === 67 && salesLog ? { id: req.id, cmd: req.cmd, milk_tea_get_sales_log: salesLog } : { id: req.id, cmd: req.cmd };
     const response = hireList && Number(req.cmd) === 55 ? { ...fixture, milk_tea_get_shop: { shop: { ...fixture.milk_tea_get_shop.shop, slots: [] } } } : fixture;
     return { body: types.MilkTeaOperateReply.encode(types.MilkTeaOperateReply.fromObject(response)).finish() };
   } });return { service, calls, logs };
@@ -287,4 +287,39 @@ test('milk tea logs localized outcomes, hire fallback and skips without dumping 
   await assert.rejects(rejected.service.operateMilkTea('hire', { autoSelect: true }));
   assert.equal(rejected.logs[0][2].result, 'error');
   assert.match(rejected.logs[0][1], /奶茶券不足/);
+});
+
+test('automatic work interaction selects one configured action and skips unavailable shifts', async () => {
+  const { automaticInteractionParams, normalizeInteractionType } = require('../src/services/activity-milk-tea');
+  const now = WINDOW.startTime + 100;
+  const shift = { employer: { gid: '222' }, begin_at: now - 10, end_at: now + 100, interact_count: 0, interact_limit: 1 };
+  const work = { my_shift: shift, interact_done: false };
+  for (let interactionType = 1; interactionType <= 5; interactionType++) {
+    const params = automaticInteractionParams({ phase: 'business', work }, String(interactionType), now);
+    assert.deepEqual(params, { interactionType });
+    const { service, calls } = setup({ now, workPage: work });
+    await service.operateMilkTea('interact', params);
+    assert.equal(calls.filter(x => Number(x.cmd) === 65).length, 1);
+    assert.deepEqual(calls.find(x => Number(x.cmd) === 65).milk_tea_interact, { target_gid: '222', interaction_type: interactionType });
+  }
+  assert.equal(normalizeInteractionType(99), 1);
+  for (const changed of [null, { ...shift, end_at: now }, { ...shift, begin_at: now + 1 }, { ...shift, interact_count: 1 }]) {
+    const workPage = { ...work, my_shift: changed };
+    assert.equal(automaticInteractionParams({ phase: 'business', work: workPage }, 1, now), null);
+    const { service, calls } = setup({ now, workPage });
+    await assert.rejects(service.operateMilkTea('interact', { interactionType: 1 }), /不可互动/);
+    assert.ok(!calls.some(x => Number(x.cmd) === 65));
+  }
+  assert.equal(automaticInteractionParams({ phase: 'business', work: { ...work, interact_done: true } }, 1, now), null);
+  assert.equal(automaticInteractionParams({ phase: 'settling', work }, 1, now), null);
+});
+test('work interaction choice survives config normalization and closes at settlement', () => {
+  const store = require('../src/models/store');
+  const options = { persist: false, accountId: '__milk_tea_interaction_preferences_test__' };
+  const cfg = store.applyConfigSnapshot({ automation: { milk_tea_interact: true, milk_tea_interaction_type: '5' } }, options);
+  assert.equal(cfg.automation.milk_tea_interact, true);
+  assert.equal(cfg.automation.milk_tea_interaction_type, 5);
+  store._test.disableHiddenActivityAutomation(cfg.automation, WINDOW.settleTime);
+  assert.equal(cfg.automation.milk_tea_interact, false);
+  assert.equal(store.applyConfigSnapshot({ automation: { milk_tea_interaction_type: 99 } }, options).automation.milk_tea_interaction_type, 1);
 });
