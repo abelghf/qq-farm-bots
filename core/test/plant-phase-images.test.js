@@ -8,6 +8,34 @@ const {
     getMutantPlantImageByPhase,
     getPlantImageByPhase,
 } = require('../src/config/gameConfig');
+const { findSpinePhaseRegion } = require('../scripts/extract-plant-phase-images');
+
+test('森野黄金芽提取阶段整图，不能把成熟动画数字零件当成生长阶段', () => {
+    for (let phase = 2; phase <= 5; phase++) {
+        const normal = new Map([[`0${phase}`, {}], [`${phase}jie`, {}]]);
+        const mutant = new Map([[`0${phase}`, {}], [`pt_sz_${phase}`, {}]]);
+        assert.equal(findSpinePhaseRegion(normal, phase, 'Crop_9005', 'Crop_1029005'), `${phase}jie`);
+        assert.equal(findSpinePhaseRegion(mutant, phase, 'Plant_1028005', 'Crop_1028005'), `pt_sz_${phase}`);
+        assert.equal(findSpinePhaseRegion(new Map([['grow_02', {}]]), 2, 'Crop_9003', ''), 'grow_02');
+    }
+});
+
+test('森野黄金芽四个品种使用各自完整阶段图，不再把变异回退到普通版', () => {
+    const sources = require('../src/gameConfig/plant_images/milk-tea-phase-sources.json');
+    for (const id of [1029005, 1129005, 1028005, 1128005]) {
+        const asset = id === 1029005 ? 'Crop_9005' : `Plant_${id}`;
+        for (let phase = 2; phase <= 5; phase++) {
+            const url = getPlantImageByPhase(id, phase);
+            assert.equal(url, `/game-config/plant_images/${asset}/${phase}.png`);
+            const bytes = fs.readFileSync(path.join(__dirname, '..', 'src', url.replace('/game-config/', 'gameConfig/')));
+            // 错误零件只有几十像素；完整阶段图的双边均超过100像素。
+            assert.ok(bytes.readUInt32BE(16) > 100 && bytes.readUInt32BE(20) > 100, `${asset}/${phase}`);
+            const source = sources.items.find(item => item.asset === asset && item.phase === phase);
+            assert.equal(source.atlasRegion, [1028005, 1128005].includes(id) ? `pt_sz_${phase}` : `${phase}jie`);
+            assert.equal(source.file, `${asset}/${phase}.png`);
+        }
+    }
+});
 
 test('活动植物按阶段返回官方植物图片', () => {
     const image = getPlantImageByPhase(1021037, 6);
