@@ -64,4 +64,5 @@ test('solar display resolves official names, time-derived expiration and the nex
   assert.equal(data.terms[0].statusLabel, '未开始');
   assert.equal(data.claimableCount, 0);
   assert.equal(require('../src/config/gameConfig').getItemById(22254).name, '天山红枫种子');
+  assert.equal(require('../src/config/gameConfig').getItemImageById(22254), '/game-config/seed_images_named/22254.png');
 });
